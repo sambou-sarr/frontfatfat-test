@@ -1,0 +1,50 @@
+name: fatfat
+description: "A new Flutter project."
+publish_to: 'none'
+
+version: 1.0.0+1
+
+environment:
+  sdk: ^3.9.0
+
+dependencies:
+  flutter:
+    sdk: flutter
+  shared_preferences: ^2.2.0
+  geolocator: ^13.0.1
+  cupertino_icons: ^1.0.8
+  # UI & Fonts
+  google_fonts: ^8.0.0
+  font_awesome_flutter: ^10.6.0
+  google_places_flutter: ^2.0.4  # Pour l'autocomplétion
+  flutter_polyline_points: ^2.1.0 # Pour dessiner l'itinéraire
+  flutter_map: ^6.1.0
+  latlong2: ^0.9.1
+  
+  # Charts & Maps
+  fl_chart: ^0.66.0
+  intl: ^0.19.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+
+  flutter_lints: ^5.0.0
+
+  flutter_launcher_icons: ^0.14.4
+
+
+# 🔥 CONFIGURATION ICÔNE (TOUJOURS À LA RACINE)
+flutter_icons:
+  android: true
+  ios: true
+  image_path: lib/assets/images/logofatfatbg.png
+  adaptive_icon_foreground: lib/assets/images/logofatfatbg.png
+  adaptive_icon_background: "#FFFFFF"
+
+
+flutter:
+  uses-material-design: true
+
+  assets:
+    - lib/assets/images/
