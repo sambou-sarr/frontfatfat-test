@@ -10,6 +10,7 @@ import '../themes/app_theme.dart';
 import '../widgets/mission_type_card.dart';
 import '../service/api.dart';
 import 'client_history_screen.dart';
+import 'client_profile_screen.dart';
 
 class ClientMainScreen extends StatefulWidget {
   const ClientMainScreen({super.key});
@@ -37,7 +38,10 @@ class _ClientMainScreenState extends State<ClientMainScreen> {
   // --- INITIALISATION : GPS & INFOS UTILISATEUR ---
   Future<void> _initAppData() async {
     try {
+      // Récupération de la position actuelle
       Position position = await Geolocator.getCurrentPosition();
+
+      // Récupération des infos depuis Laravel
       final userRes = await Api.getUserInfo();
 
       setState(() {
@@ -50,7 +54,7 @@ class _ClientMainScreenState extends State<ClientMainScreen> {
         _isLoading = false;
       });
     } catch (e) {
-      print("Erreur initialisation : $e");
+      debugPrint("Erreur initialisation : $e");
       setState(() => _isLoading = false);
     }
   }
@@ -67,14 +71,15 @@ class _ClientMainScreenState extends State<ClientMainScreen> {
     final coords = await Api.getCoordinatesFromAddress(address);
 
     if (coords != null) {
-      setState(
-        () => _destinationLatLng = LatLng(coords['lat']!, coords['lng']!),
-      );
+      setState(() {
+        _destinationLatLng = LatLng(coords['lat']!, coords['lng']!);
+      });
 
+      // Appel à l'algorithme de tarification Laravel
       final res = await Api.estimerPrix({
         "type_service_id": serviceId,
-        "distance_km": 7, // Valeur test
-        "duree_min": 30, // Valeur test
+        "distance_km": 7, // Simulation de distance pour le test
+        "duree_min": 30,
       });
 
       if (res['status'] == 200 && res['body'] != null) {
@@ -95,16 +100,16 @@ class _ClientMainScreenState extends State<ClientMainScreen> {
   // --- CRÉATION DE LA COURSE ---
   Future<void> _confirmOrder(
     int serviceId,
-    String destinationAddress,
-    String phoneDestinataire,
+    String destAddr,
+    String phone,
   ) async {
     setState(() => _isLoading = true);
 
     final missionData = {
       "type_service_id": serviceId,
       "adresse_depart": "Ma position actuelle",
-      "adresse_arrivee": destinationAddress,
-      "telephone_destinataire": phoneDestinataire, // Nouvelle donnée ajoutée
+      "adresse_arrivee": destAddr,
+      "telephone_destinataire": phone,
       "lat_depart": _currentLatLng?.latitude,
       "lng_depart": _currentLatLng?.longitude,
       "lat_arrivee": _destinationLatLng?.latitude,
@@ -115,14 +120,9 @@ class _ClientMainScreenState extends State<ClientMainScreen> {
     final res = await Api.createMission(missionData);
 
     if (res['status'] == 201 || res['status'] == 200) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text("Course créée ! En attente d'un chauffeur."),
-          backgroundColor: Colors.green,
-        ),
-      );
+      _showSuccess("Course créée ! Un livreur sera bientôt affecté.");
       setState(() {
-        _selectedIndex = 1; // Redirection vers l'historique
+        _selectedIndex = 1; // Navigation vers l'historique
         _isLoading = false;
         _prixFinal = null;
         _destinationLatLng = null;
@@ -139,6 +139,12 @@ class _ClientMainScreenState extends State<ClientMainScreen> {
     );
   }
 
+  void _showSuccess(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(message), backgroundColor: Colors.green),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     if (_isLoading) {
@@ -149,10 +155,11 @@ class _ClientMainScreenState extends State<ClientMainScreen> {
       );
     }
 
+    // LISTE DES PAGES DE LA NAVIGATION
     final List<Widget> _pages = [
       _buildMapDashboard(),
       const ClientHistoryScreen(),
-      const Center(child: Text("Profil Utilisateur")),
+      ClientProfileScreen(userName: userName),
     ];
 
     return Scaffold(
@@ -160,18 +167,19 @@ class _ClientMainScreenState extends State<ClientMainScreen> {
       bottomNavigationBar: BottomNavigationBar(
         currentIndex: _selectedIndex,
         selectedItemColor: AppColors.primaryRed,
+        unselectedItemColor: Colors.grey,
+        type: BottomNavigationBarType.fixed,
         onTap: (index) => setState(() => _selectedIndex = index),
         items: const [
-          BottomNavigationBarItem(
-            icon: Icon(Icons.home_filled),
-            label: 'Accueil',
-          ),
+          BottomNavigationBarItem(icon: Icon(Icons.map), label: 'Commander'),
           BottomNavigationBarItem(icon: Icon(Icons.history), label: 'Courses'),
           BottomNavigationBarItem(icon: Icon(Icons.person), label: 'Profil'),
         ],
       ),
     );
   }
+
+  // --- COMPOSANTS UI ---
 
   Widget _buildMapDashboard() {
     return Stack(
@@ -263,7 +271,7 @@ class _ClientMainScreenState extends State<ClientMainScreen> {
           const SizedBox(width: 15),
           Expanded(
             child: MissionTypeCard(
-              icon: Icons.person,
+              icon: Icons.directions_bike,
               title: "Transport",
               color: Colors.blue,
               onTap: () => _openOrderModal(2),
@@ -275,8 +283,8 @@ class _ClientMainScreenState extends State<ClientMainScreen> {
   }
 
   void _openOrderModal(int serviceId) {
-    final TextEditingController _addressController = TextEditingController();
-    final TextEditingController _phoneController = TextEditingController();
+    final TextEditingController addrController = TextEditingController();
+    final TextEditingController phoneController = TextEditingController();
     _prixFinal = null;
 
     showModalBottomSheet(
@@ -306,10 +314,8 @@ class _ClientMainScreenState extends State<ClientMainScreen> {
                 ),
               ),
               const SizedBox(height: 20),
-
-              // CHAMP ADRESSE
               TextField(
-                controller: _addressController,
+                controller: addrController,
                 decoration: InputDecoration(
                   labelText: "Lieu d'arrivée",
                   prefixIcon: const Icon(
@@ -317,9 +323,9 @@ class _ClientMainScreenState extends State<ClientMainScreen> {
                     color: AppColors.primaryRed,
                   ),
                   suffixIcon: IconButton(
-                    icon: const Icon(Icons.send),
+                    icon: const Icon(Icons.search),
                     onPressed: () => _handleSearch(
-                      _addressController.text,
+                      addrController.text,
                       serviceId,
                       setModalState,
                     ),
@@ -330,10 +336,8 @@ class _ClientMainScreenState extends State<ClientMainScreen> {
                 ),
               ),
               const SizedBox(height: 15),
-
-              // CHAMP TÉLÉPHONE DESTINATAIRE
               TextField(
-                controller: _phoneController,
+                controller: phoneController,
                 keyboardType: TextInputType.phone,
                 decoration: InputDecoration(
                   labelText: "Numéro du destinataire",
@@ -341,19 +345,16 @@ class _ClientMainScreenState extends State<ClientMainScreen> {
                     Icons.phone,
                     color: AppColors.primaryRed,
                   ),
-                  hintText: "77 000 00 00",
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(12),
                   ),
                 ),
               ),
-
               if (_isSearching)
                 const Padding(
                   padding: EdgeInsets.all(10),
-                  child: CircularProgressIndicator(color: AppColors.primaryRed),
+                  child: CircularProgressIndicator(),
                 ),
-
               if (_prixFinal != null) ...[
                 const SizedBox(height: 20),
                 Text(
@@ -365,21 +366,16 @@ class _ClientMainScreenState extends State<ClientMainScreen> {
                   ),
                 ),
               ],
-
               const SizedBox(height: 20),
               ElevatedButton(
                 onPressed: _prixFinal == null
                     ? null
                     : () {
-                        if (_phoneController.text.trim().isEmpty) {
-                          _showError("Le numéro du destinataire est requis");
-                          return;
-                        }
-                        Navigator.pop(context); // Fermer le modal
+                        Navigator.pop(context);
                         _confirmOrder(
                           serviceId,
-                          _addressController.text,
-                          _phoneController.text,
+                          addrController.text,
+                          phoneController.text,
                         );
                       },
                 style: ElevatedButton.styleFrom(

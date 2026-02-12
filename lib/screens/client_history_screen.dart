@@ -1,8 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 import '../themes/app_theme.dart';
-import '../service/api.dart';
 
 class ClientHistoryScreen extends StatefulWidget {
   const ClientHistoryScreen({super.key});
@@ -14,87 +12,76 @@ class ClientHistoryScreen extends StatefulWidget {
 class _ClientHistoryScreenState extends State<ClientHistoryScreen> {
   List<dynamic> _history = [];
   bool _isLoading = true;
-  int? id;
+
+  // --- DONNÉES FICTIVES (MOCK DATA) ---
+  final List<Map<String, dynamic>> _mockHistory = [
+    {
+      "id": 16,
+      "adresse_depart": "Ma position actuelle (Plateau)",
+      "adresse_arrivee": "Yoff, Cité Biagui",
+      "prix_total": 2000,
+      "statut": "ACCEPTEE",
+      "created_at": "2026-02-12T14:08:04.000000Z",
+    },
+    {
+      "id": 15,
+      "adresse_depart": "Place de l'Indépendance",
+      "adresse_arrivee": "Monument de la Renaissance",
+      "prix_total": 2500,
+      "statut": "EN_ATTENTE",
+      "created_at": "2026-02-10T17:28:26.000000Z",
+    },
+    {
+      "id": 1,
+      "adresse_depart": "Dakar Plateau",
+      "adresse_arrivee": "Mermoz École de Police",
+      "prix_total": 1550,
+      "statut": "LIVREE",
+      "created_at": "2026-01-28T18:42:51.000000Z",
+    },
+    {
+      "id": 5,
+      "adresse_depart": "Mermoz",
+      "adresse_arrivee": "Dakar Ville",
+      "prix_total": 2000,
+      "statut": "ANNULEE",
+      "created_at": "2026-02-04T14:40:48.000000Z",
+    },
+  ];
 
   @override
   void initState() {
     super.initState();
-    _initAppData();
+    _simulateLoading();
   }
 
-  // --- 1. RÉCUPÉRATION DES INFOS UTILISATEUR ---
-  Future<void> _initAppData() async {
-    try {
-      final userRes = await Api.getUserInfo();
-
-      if (userRes['status'] == 200) {
-        // Attention : vérifiez si votre API renvoie 'id' ou 'id_client'
-        var data = userRes['body']['body'];
-        int extractedId = data['id'] ?? data['id_client'];
-
-        final prefs = await SharedPreferences.getInstance();
-        await prefs.setString('user_id', extractedId.toString());
-
-        if (mounted) {
-          setState(() {
-            id = extractedId;
-          });
-          _fetchHistory();
-        }
-      } else {
-        if (mounted) setState(() => _isLoading = false);
+  // Simule un appel API
+  void _simulateLoading() {
+    Future.delayed(const Duration(seconds: 1), () {
+      if (mounted) {
+        setState(() {
+          _history = _mockHistory;
+          _isLoading = false;
+        });
       }
-    } catch (e) {
-      print("Erreur initialisation : $e");
-      if (mounted) setState(() => _isLoading = false);
-    }
+    });
   }
 
-  // --- 2. RÉCUPÉRATION DE L'HISTORIQUE ---
-  Future<void> _fetchHistory() async {
-    if (id == null) return;
-
-    setState(() => _isLoading = true);
-    try {
-      final res = await Api.getUserMissions(id!);
-
-      if (res['status'] == 200) {
-        if (mounted) {
-          setState(() {
-            _history = res['body']['body'] ?? [];
-            _isLoading = false;
-          });
-        }
-      } else {
-        if (mounted) setState(() => _isLoading = false);
-        _showError("Erreur lors de la récupération");
-      }
-    } catch (e) {
-      if (mounted) setState(() => _isLoading = false);
-      _showError("Erreur de connexion au serveur");
-    }
-  }
-
-  void _showError(String message) {
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(message), backgroundColor: Colors.red),
-    );
-  }
-
-  // --- LOGIQUE VISUELLE ---
+  // --- LOGIQUE VISUELLE DES STATUTS ---
   Color _getStatusColor(String? status) {
     if (status == null) return Colors.grey;
-    switch (status.toLowerCase()) {
-      case "livrée":
-      case "termine":
+    switch (status.toUpperCase()) {
+      case "LIVREE":
+      case "TERMINE":
         return Colors.green;
-      case "annulée":
-        return Colors.redAccent;
-      case "en_cours":
+      case "ACCEPTEE":
         return Colors.blue;
-      default:
+      case "ANNULEE":
+        return Colors.red;
+      case "EN_ATTENTE":
         return Colors.orange;
+      default:
+        return Colors.grey;
     }
   }
 
@@ -103,30 +90,27 @@ class _ClientHistoryScreenState extends State<ClientHistoryScreen> {
     return Scaffold(
       backgroundColor: Colors.grey[50],
       appBar: AppBar(
-        title: const Text("Mes Missions"),
+        title: Text(
+          "Mon Historique ",
+          style: GoogleFonts.poppins(
+            fontWeight: FontWeight.bold,
+            color: Colors.black,
+            fontSize: 18,
+          ),
+        ),
         backgroundColor: Colors.white,
         elevation: 0.5,
-        titleTextStyle: GoogleFonts.poppins(
-          color: Colors.black87,
-          fontSize: 18,
-          fontWeight: FontWeight.bold,
-        ),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.refresh, color: AppColors.primaryRed),
-            onPressed: _fetchHistory,
-          ),
-        ],
+        centerTitle: true,
       ),
       body: _isLoading
           ? const Center(
               child: CircularProgressIndicator(color: AppColors.primaryRed),
             )
-          : _history.isEmpty
-          ? _buildEmptyState()
           : RefreshIndicator(
-              onRefresh: _fetchHistory,
-              color: AppColors.primaryRed,
+              onRefresh: () async {
+                setState(() => _isLoading = true);
+                _simulateLoading();
+              },
               child: ListView.builder(
                 padding: const EdgeInsets.all(16),
                 itemCount: _history.length,
@@ -158,61 +142,46 @@ class _ClientHistoryScreenState extends State<ClientHistoryScreen> {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Row(
-                children: [
-                  Icon(
-                    mission['type_service_id'] == 1
-                        ? Icons.inventory
-                        : Icons.person,
-                    color: AppColors.primaryRed,
-                    size: 20,
-                  ),
-                  const SizedBox(width: 8),
-                  Text(
-                    mission['type_service_id'] == 1 ? "Colis" : "Transport",
-                    style: GoogleFonts.poppins(fontWeight: FontWeight.bold),
-                  ),
-                ],
-              ),
-              Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 10,
-                  vertical: 4,
-                ),
-                decoration: BoxDecoration(
-                  color: _getStatusColor(mission['statut']),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Text(
-                  (mission['statut'] ?? "Attente").toUpperCase(),
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 10,
-                    fontWeight: FontWeight.bold,
-                  ),
+              Text(
+                "Course #${mission['id']}",
+                style: GoogleFonts.poppins(
+                  fontWeight: FontWeight.bold,
+                  color: Colors.grey[600],
+                  fontSize: 13,
                 ),
               ),
+              _buildStatusBadge(mission['statut']),
             ],
           ),
           const Divider(height: 24),
-          _buildRouteRow(
-            mission['adresse_depart'] ?? "Position actuelle",
-            mission['adresse_arrivee'] ?? "Destination",
+          _buildLocationRow(
+            Icons.circle,
+            Colors.blue,
+            mission['adresse_depart'],
           ),
-          const SizedBox(height: 16),
+          const Padding(
+            padding: EdgeInsets.only(left: 11),
+            child: SizedBox(height: 10, child: VerticalDivider(width: 1)),
+          ),
+          _buildLocationRow(
+            Icons.location_on,
+            AppColors.primaryRed,
+            mission['adresse_arrivee'],
+          ),
+          const Divider(height: 24),
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               Text(
-                "${mission['prix_total'] ?? 0} FCFA",
+                "${mission['prix_total']} FCFA",
                 style: GoogleFonts.poppins(
                   fontWeight: FontWeight.bold,
-                  fontSize: 16,
-                  color: AppColors.primaryRed,
+                  fontSize: 17,
+                  color: Colors.black,
                 ),
               ),
               Text(
-                mission['created_at']?.split('T')[0] ?? "",
+                _formatDate(mission['created_at']),
                 style: GoogleFonts.poppins(fontSize: 12, color: Colors.grey),
               ),
             ],
@@ -222,59 +191,48 @@ class _ClientHistoryScreenState extends State<ClientHistoryScreen> {
     );
   }
 
-  Widget _buildRouteRow(String from, String to) {
+  Widget _buildStatusBadge(String? status) {
+    Color color = _getStatusColor(status);
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.1),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Text(
+        (status ?? "Inconnu").replaceAll('_', ' '),
+        style: GoogleFonts.poppins(
+          color: color,
+          fontSize: 11,
+          fontWeight: FontWeight.bold,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildLocationRow(IconData icon, Color color, String? address) {
     return Row(
       children: [
-        Column(
-          children: [
-            const Icon(Icons.circle, size: 8, color: Colors.blue),
-            Container(width: 1, height: 20, color: Colors.grey[300]),
-            const Icon(
-              Icons.location_on,
-              size: 14,
-              color: AppColors.primaryRed,
-            ),
-          ],
-        ),
+        Icon(icon, size: 14, color: color),
         const SizedBox(width: 12),
         Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                from,
-                style: const TextStyle(fontSize: 12),
-                overflow: TextOverflow.ellipsis,
-              ),
-              const SizedBox(height: 8),
-              Text(
-                to,
-                style: const TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w500,
-                ),
-                overflow: TextOverflow.ellipsis,
-              ),
-            ],
+          child: Text(
+            address ?? "Adresse inconnue",
+            style: GoogleFonts.poppins(fontSize: 13, color: Colors.black87),
+            overflow: TextOverflow.ellipsis,
           ),
         ),
       ],
     );
   }
 
-  Widget _buildEmptyState() {
-    return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(Icons.history, size: 60, color: Colors.grey[300]),
-          const SizedBox(height: 16),
-          Text(
-            "Aucune mission",
-            style: GoogleFonts.poppins(color: Colors.grey),
-          ),
-        ],
-      ),
-    );
+  String _formatDate(String? dateStr) {
+    if (dateStr == null) return "";
+    try {
+      final date = DateTime.parse(dateStr);
+      return "${date.day.toString().padLeft(2, '0')}/${date.month.toString().padLeft(2, '0')}/${date.year}";
+    } catch (e) {
+      return dateStr.split('T')[0];
+    }
   }
 }

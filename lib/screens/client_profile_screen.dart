@@ -57,11 +57,6 @@ class ClientProfileScreen extends StatelessWidget {
                   "Email, Téléphone",
                 ),
                 _buildMenuOption(
-                  Icons.payment,
-                  "Moyens de paiement",
-                  "Wave, Orange Money, Cash",
-                ),
-                _buildMenuOption(
                   Icons.location_on,
                   "Mes adresses enregistrées",
                   "Maison, Travail",

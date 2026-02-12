@@ -5,7 +5,8 @@ import '../themes/app_theme.dart';
 import '../widgets/fat_fat_logo.dart';
 import '../service/api.dart';
 import 'driver_gains_screen.dart';
-import 'driver_navigation_screen.dart'; // Import crucial pour la bascule
+import 'driver_profile_screen.dart';
+import 'driver_navigation_screen.dart';
 
 class DriverMainScreen extends StatefulWidget {
   const DriverMainScreen({super.key});
@@ -22,19 +23,22 @@ class _DriverMainScreenState extends State<DriverMainScreen> {
 
   @override
   void dispose() {
-    _refreshTimer?.cancel(); // Toujours arrêter le timer
+    _refreshTimer
+        ?.cancel(); // Sécurité : On arrête le timer si on quitte l'écran
     super.dispose();
   }
 
-  // --- LOGIQUE MÉTIER ---
-
-  // 1. Basculer la disponibilité (En ligne / Hors ligne)
+  // ---------------------------------------------------------
+  // 1. LOGIQUE DE DISPONIBILITÉ (BACKEND SYNC)
+  // ---------------------------------------------------------
   Future<void> _toggleAvailability(bool value) async {
+    // Optimisme UI : On change l'état visuel immédiatement
     setState(() => _isAvailable = value);
 
     final res = await Api.toggleAvailability();
 
     if (res['status'] == 200) {
+      // On synchronise avec la réponse réelle de Laravel
       bool newState =
           res['body']['disponible'] == 1 || res['body']['disponible'] == true;
       setState(() => _isAvailable = newState);
@@ -45,14 +49,15 @@ class _DriverMainScreenState extends State<DriverMainScreen> {
         _stopAutoRefresh();
       }
     } else {
+      // En cas d'échec, on revient à l'état précédent
       setState(() => _isAvailable = !value);
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Erreur de connexion au serveur")),
-      );
+      _showSnackBar("Erreur de connexion au serveur", Colors.red);
     }
   }
 
-  // 2. Polling : Recherche automatique de missions
+  // ---------------------------------------------------------
+  // 2. SYSTÈME DE POLLING (RECHERCHE DE MISSIONS)
+  // ---------------------------------------------------------
   void _startAutoRefresh() {
     _fetchMissions();
     _refreshTimer = Timer.periodic(const Duration(seconds: 5), (timer) {
@@ -72,20 +77,17 @@ class _DriverMainScreenState extends State<DriverMainScreen> {
     }
   }
 
-  // 3. ACCEPTER LA MISSION ET BASCULER VERS LA NAVIGATION
+  // ---------------------------------------------------------
+  // 3. ACCEPTATION DE MISSION & NAVIGATION GPS
+  // ---------------------------------------------------------
   Future<void> _acceptMission(int id) async {
     final success = await Api.acceptMission(id);
 
     if (success) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text("Course acceptée ! Préparation de l'itinéraire..."),
-            backgroundColor: Colors.green,
-          ),
-        );
+        _showSnackBar("Course acceptée ! Initialisation GPS...", Colors.green);
 
-        // --- BASCULE VERS LA PAGE DE NAVIGATION ---
+        // Redirection vers l'écran de navigation active
         Navigator.push(
           context,
           MaterialPageRoute(
@@ -95,15 +97,19 @@ class _DriverMainScreenState extends State<DriverMainScreen> {
       }
     } else {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text("Désolé, cette course n'est plus disponible"),
-            backgroundColor: Colors.red,
-          ),
+        _showSnackBar(
+          "Cette course a déjà été prise par un autre livreur",
+          Colors.orange,
         );
-        _fetchMissions(); // Rafraîchir la liste
+        _fetchMissions();
       }
     }
+  }
+
+  void _showSnackBar(String message, Color color) {
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(message), backgroundColor: color));
   }
 
   @override
@@ -111,85 +117,72 @@ class _DriverMainScreenState extends State<DriverMainScreen> {
     return Scaffold(
       appBar: AppBar(
         title: const FatFatLogo(size: 24),
-        actions: [
-          Row(
-            children: [
-              Text(
-                _isAvailable ? "En ligne" : "Hors ligne",
-                style: GoogleFonts.poppins(
-                  fontSize: 12,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-              Switch(
-                value: _isAvailable,
-                onChanged: _toggleAvailability,
-                activeColor: AppColors.primaryYellow,
-                activeTrackColor: Colors.black,
-              ),
-            ],
-          ),
-          const SizedBox(width: 16),
+        actions: [_buildAvailabilityToggle()],
+      ),
+      // IndexedStack préserve l'état de chaque onglet (Gains, Profil, Liste)
+      body: IndexedStack(
+        index: _selectedIndex,
+        children: [
+          _buildMissionsList(),
+          const DriverGainsScreen(),
+          const DriverProfileScreen(),
         ],
       ),
-      body: _selectedIndex == 0
-          ? _buildMissionsList()
-          : _selectedIndex == 1
-          ? const DriverGainsScreen()
-          : const Center(child: Text("Paramètres du Profil")),
       bottomNavigationBar: BottomNavigationBar(
         currentIndex: _selectedIndex,
         onTap: (index) => setState(() => _selectedIndex = index),
         selectedItemColor: AppColors.primaryRed,
+        unselectedItemColor: Colors.grey,
+        type: BottomNavigationBarType.fixed,
         items: const [
           BottomNavigationBarItem(
-            icon: Icon(Icons.list_alt),
+            icon: Icon(Icons.motorcycle),
             label: 'Missions',
           ),
+          BottomNavigationBarItem(icon: Icon(Icons.payments), label: 'Gains'),
           BottomNavigationBarItem(
-            icon: Icon(Icons.attach_money),
-            label: 'Gains',
+            icon: Icon(Icons.person_pin),
+            label: 'Profil',
           ),
-          BottomNavigationBarItem(icon: Icon(Icons.person), label: 'Profil'),
         ],
       ),
     );
   }
 
+  // --- COMPOSANTS UI ---
+
+  Widget _buildAvailabilityToggle() {
+    return Row(
+      children: [
+        Text(
+          _isAvailable ? "EN LIGNE" : "HORS LIGNE",
+          style: GoogleFonts.poppins(fontSize: 10, fontWeight: FontWeight.bold),
+        ),
+        Switch(
+          value: _isAvailable,
+          onChanged: _toggleAvailability,
+          activeColor: Colors.green,
+          activeTrackColor: Colors.green.withOpacity(0.2),
+        ),
+        const SizedBox(width: 10),
+      ],
+    );
+  }
+
   Widget _buildMissionsList() {
     if (!_isAvailable) {
-      return Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            const Icon(Icons.power_settings_new, size: 60, color: Colors.grey),
-            const SizedBox(height: 10),
-            Text(
-              "Vous êtes hors ligne",
-              style: GoogleFonts.poppins(fontSize: 18, color: Colors.grey),
-            ),
-            Text(
-              "Mettez-vous en ligne pour voir les livraisons",
-              style: GoogleFonts.poppins(fontSize: 12, color: Colors.grey),
-            ),
-          ],
-        ),
+      return _buildEmptyState(
+        Icons.cloud_off,
+        "Vous êtes déconnecté",
+        "Activez votre disponibilité pour voir les courses.",
       );
     }
 
     if (_missions.isEmpty) {
-      return Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            const CircularProgressIndicator(color: AppColors.primaryRed),
-            const SizedBox(height: 20),
-            Text(
-              "Recherche de courses à Dakar...",
-              style: GoogleFonts.poppins(fontSize: 16),
-            ),
-          ],
-        ),
+      return _buildEmptyState(
+        Icons.search,
+        "Recherche de missions...",
+        "Patientez, les commandes de Dakar arrivent.",
       );
     }
 
@@ -201,11 +194,11 @@ class _DriverMainScreenState extends State<DriverMainScreen> {
   }
 
   Widget _buildMissionCard(dynamic mission) {
-    String type = mission['type_service_id'] == 1 ? "Colis" : "Transport";
+    bool isColis = mission['type_service_id'] == 1;
     return Card(
       margin: const EdgeInsets.only(bottom: 16),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-      elevation: 4,
+      elevation: 2,
       child: Padding(
         padding: const EdgeInsets.all(16),
         child: Column(
@@ -213,52 +206,47 @@ class _DriverMainScreenState extends State<DriverMainScreen> {
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Row(
-                  children: [
-                    Icon(
-                      type == "Colis" ? Icons.inventory : Icons.person,
-                      color: AppColors.primaryRed,
-                    ),
-                    const SizedBox(width: 8),
-                    Text(
-                      type,
-                      style: GoogleFonts.poppins(
-                        fontWeight: FontWeight.w600,
-                        color: AppColors.primaryRed,
-                      ),
-                    ),
-                  ],
+                Chip(
+                  label: Text(isColis ? "COLIS" : "TRANSPORT"),
+                  backgroundColor: AppColors.primaryRed.withOpacity(0.1),
+                  labelStyle: const TextStyle(
+                    color: AppColors.primaryRed,
+                    fontSize: 10,
+                  ),
                 ),
                 Text(
                   "${mission['prix_total']} FCFA",
                   style: GoogleFonts.poppins(
                     fontWeight: FontWeight.bold,
-                    fontSize: 16,
+                    fontSize: 18,
                     color: Colors.green[700],
                   ),
                 ),
               ],
             ),
-            const Divider(height: 20),
-            _buildLocationRow(
-              Icons.my_location,
+            const Divider(),
+            _buildRouteInfo(
+              Icons.circle,
               Colors.blue,
-              mission['adresse_depart'] ?? "Départ",
+              mission['adresse_depart'],
             ),
             const SizedBox(height: 10),
-            _buildLocationRow(
-              Icons.flag,
-              AppColors.primaryRed,
-              mission['adresse_arrivee'] ?? "Destination",
+            _buildRouteInfo(
+              Icons.location_on,
+              Colors.red,
+              mission['adresse_arrivee'],
             ),
-            const SizedBox(height: 16),
+            const SizedBox(height: 20),
             SizedBox(
               width: double.infinity,
               child: ElevatedButton(
                 onPressed: () => _acceptMission(mission['id']),
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: AppColors.primaryRed,
-                  padding: const EdgeInsets.symmetric(vertical: 12),
+                  backgroundColor: Colors.black,
+                  padding: const EdgeInsets.symmetric(vertical: 15),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(10),
+                  ),
                 ),
                 child: const Text(
                   "ACCEPTER LA COURSE",
@@ -275,7 +263,7 @@ class _DriverMainScreenState extends State<DriverMainScreen> {
     );
   }
 
-  Widget _buildLocationRow(IconData icon, Color color, String address) {
+  Widget _buildRouteInfo(IconData icon, Color color, String address) {
     return Row(
       children: [
         Icon(icon, size: 16, color: color),
@@ -283,11 +271,34 @@ class _DriverMainScreenState extends State<DriverMainScreen> {
         Expanded(
           child: Text(
             address,
-            style: GoogleFonts.poppins(fontSize: 14),
+            style: GoogleFonts.poppins(fontSize: 13),
             overflow: TextOverflow.ellipsis,
           ),
         ),
       ],
+    );
+  }
+
+  Widget _buildEmptyState(IconData icon, String title, String sub) {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(icon, size: 80, color: Colors.grey[300]),
+          const SizedBox(height: 10),
+          Text(
+            title,
+            style: GoogleFonts.poppins(
+              fontSize: 18,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          Text(
+            sub,
+            style: GoogleFonts.poppins(fontSize: 12, color: Colors.grey),
+          ),
+        ],
+      ),
     );
   }
 }

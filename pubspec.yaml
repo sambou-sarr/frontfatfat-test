@@ -20,6 +20,7 @@ dependencies:
   flutter_polyline_points: ^2.1.0 # Pour dessiner l'itinéraire
   flutter_map: ^6.1.0
   latlong2: ^0.9.1
+  image_picker: ^1.0.7
   
   # Charts & Maps
   fl_chart: ^0.66.0
